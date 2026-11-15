@@ -1,0 +1,10 @@
+/_build/
+/cover/
+/deps/
+/doc/
+/data/
+erl_crash.dump
+*.ez
+emergencias-*.tar
+/tmp/
+.elixir_ls/
