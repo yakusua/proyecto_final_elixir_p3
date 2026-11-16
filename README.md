@@ -1,154 +1,172 @@
-# Documentación del proyecto
+# Emergencias
 
-Este documento describe la arquitectura y los structs definidos en `lib/`. Los campos con valores por defecto se indican entre paréntesis.
+Aplicación de consola para coordinar zonas, necesidades, recursos, personas, mascotas y albergues durante una emergencia. Está implementada en Elixir y usa archivos de texto en `data/` para persistir la información.
 
-## Arquitectura
+## Requisitos
 
-### Arquitectura de módulos
+- Elixir `~> 1.14` y Erlang/OTP.
+- Ejecutar los comandos desde la carpeta del proyecto, donde está `mix.exs`.
+
+## Comandos de Mix
+
+| Comando | Qué hace |
+| --- | --- |
+| `mix --version` | Muestra las versiones instaladas de Mix, Elixir y Erlang/OTP. |
+| `mix help` | Muestra las tareas Mix disponibles en el entorno. |
+| `mix help emergencias` | Muestra la ayuda de la tarea de esta aplicación. |
+| `mix deps.get` | Descarga las dependencias declaradas. Actualmente el proyecto no declara dependencias externas, por lo que no hay paquetes que descargar. |
+| `mix compile` | Compila la aplicación. |
+| `mix test` | Ejecuta todas las pruebas. |
+| `mix test test/emergencias/core_test.exs` | Ejecuta solo el archivo de pruebas indicado; se puede reemplazar por cualquier archivo dentro de `test/`. |
+| `mix format` | Formatea los archivos Elixir incluidos en `.formatter.exs`. |
+| `mix format --check-formatted` | Comprueba el formato sin modificar archivos. |
+| `mix clean` | Elimina los archivos compilados; no borra los datos persistidos en `data/`. |
+| `mix run -e "IO.puts(:ok)"` | Arranca la aplicación, ejecuta la expresión Elixir y termina. Se puede sustituir la expresión por otra. |
+| `iex -S mix` | Inicia IEx (la consola interactiva de Elixir) con la aplicación cargada. Consulta los ejemplos de la sección [Usar desde IEx](#usar-desde-iex). |
+| `mix emergencias` | Inicia la consola interactiva de gestión de emergencias. Es la forma habitual de usar la aplicación. |
+
+La aplicación no define alias Mix adicionales. Para consultar las tareas incorporadas por Mix y sus opciones, usa `mix help` y `mix help <tarea>`.
+
+### Windows y PowerShell
+
+Si PowerShell bloquea la ejecución del script de Mix, puedes usar `mix.bat` en lugar de `mix`. Si prefieres permitir scripts locales para tu usuario, consulta primero la política actual con `Get-ExecutionPolicy -List`; el cambio limitado al usuario actual es `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+
+## Consola de emergencias
+
+Inicia la consola con:
+
+```shell
+mix emergencias
+```
+
+Al comenzar aparece el prompt `emergencias>`. Primero inicia sesión con `connect`; una cuenta nueva se registra automáticamente. Si no se especifica un tipo, se crea como `ciudadano`. Una cuenta existente debe autenticarse con su contraseña y conserva el tipo y la zona con los que fue creada.
+
+```text
+connect <usuario> <contraseña> [tipo] [zona] [nombre="Nombre completo"]
+```
+
+Tipos disponibles, de menor a mayor permiso: `ciudadano`, `voluntario`, `coordinador` y `administrador`. Los permisos son jerárquicos: cada tipo puede ejecutar comandos que requieran su mismo tipo o uno inferior. Los comandos de consulta suelen requerir `ciudadano`; las operaciones de voluntariado, `voluntario`; las operaciones de coordinación, `coordinador`.
+
+Controles propios de la consola:
+
+| Comando | Qué hace |
+| --- | --- |
+| `connect <usuario> <contraseña> [tipo] [zona] [nombre="Nombre completo"]` | Registra y conecta una cuenta nueva, o inicia sesión en una cuenta existente. El campo `nombre` es opcional y solo se usa al crear la cuenta. |
+| `disconnect` | Cierra la sesión actual y vuelve al prompt `emergencias>`. |
+| `quit` o `exit` | Cierra la sesión actual, si existe, y sale de la consola. |
+
+Los argumentos con espacios deben ir entre comillas simples o dobles. Las opciones se escriben como `clave=valor`; el valor también puede ir entre comillas, por ejemplo `zona="zona centro"`. En los comandos con texto libre al final, las palabras restantes se juntan en ese último argumento. Los nombres de comandos no distinguen mayúsculas de minúsculas.
+
+## Comandos disponibles en la consola
+
+`<...>` indica un argumento obligatorio; `[...]`, uno opcional. Las opciones se pueden indicar como `clave=valor`. El rol mostrado es el mínimo requerido.
+
+### Zonas
+
+| Comando | Rol mínimo | Qué hace |
+| --- | --- | --- |
+| `register_zone <codigo> <nombre> <nivel> [afectadas=...]` | coordinador | Registra una zona raíz y, opcionalmente, el número de personas afectadas. |
+| `register_sector <padre> <codigo> <nombre> <nivel> [afectadas=...]` | coordinador | Añade un sector dentro de la zona o nodo indicado por `padre`. |
+| `register_point <padre> <codigo> <nombre> <nivel> [afectadas=...]` | coordinador | Añade un punto de atención bajo el nodo indicado por `padre`. |
+| `zone_status <zona>` | ciudadano | Muestra el estado y el resumen del árbol de una zona. |
+
+### Necesidades
+
+| Comando | Rol mínimo | Qué hace |
+| --- | --- | --- |
+| `register_need <tipo> <cantidad> <prioridad> <zona> <descripcion> [albergue=...] [persona=...]` | ciudadano | Registra una necesidad. La descripción puede contener espacios. |
+| `list_needs [zona=...] [tipo=...] [prioridad=...] [estado=...] [albergue=...]` | ciudadano | Lista necesidades, opcionalmente filtradas por zona, tipo, prioridad, estado o albergue. |
+| `pending_needs [zona=...]` | voluntario | Lista necesidades pendientes, opcionalmente filtradas por zona. |
+| `update_need <id> <estado>` | voluntario | Cambia el estado de una necesidad. |
+| `assign_resource <id> <categoria> <cantidad>` | coordinador | Asigna existencias de una categoría de recursos a una necesidad. |
+
+### Recursos
+
+| Comando | Rol mínimo | Qué hace |
+| --- | --- | --- |
+| `register_resource <codigo> <categoria> <cantidad> <unidad> <ubicacion> [zona=...] [nombre=...]` | voluntario | Registra un recurso en el inventario. Si se omite `zona`, se usa la zona asociada a la cuenta. |
+| `resource_in <codigo> <ubicacion> <cantidad>` | voluntario | Suma existencias de un recurso en una ubicación. |
+| `resource_out <codigo> <ubicacion> <cantidad>` | coordinador | Retira existencias de un recurso de una ubicación. |
+| `transfer_resource <codigo> <origen> <destino> <cantidad> [zona=...]` | coordinador | Transfiere existencias entre ubicaciones. |
+| `list_resources [categoria=...] [zona=...] [ubicacion=...] [codigo=...]` | ciudadano | Consulta recursos, opcionalmente filtrados. |
+| `critical_resources` | voluntario | Muestra las categorías de recursos con déficit frente a las necesidades pendientes. |
+
+### Personas y mensajes familiares
+
+| Comando | Rol mínimo | Qué hace |
+| --- | --- | --- |
+| `report_person <documento> <nombre> <zona> <estado> [edad=...]` | ciudadano | Registra una persona afectada. |
+| `update_person <documento> [estado] [zona=...]` | voluntario | Actualiza el estado o la zona de una persona. |
+| `find_person [documento] [nombre=...] [zona=...] [estado=...]` | ciudadano | Busca personas con los filtros indicados. |
+| `send_family_message <documento> <mensaje>` | ciudadano | Envía un mensaje asociado al reporte de una persona. El mensaje admite espacios. |
+| `list_family_messages <documento> [estado=...]` | ciudadano | Lista los mensajes familiares de una persona, opcionalmente por estado. |
+| `mark_message <id> <estado>` | voluntario | Cambia el estado de un mensaje familiar. |
+
+### Mascotas
+
+| Comando | Rol mínimo | Qué hace |
+| --- | --- | --- |
+| `report_pet <tipo> <especie> <nombre> <color> <tamano> <zona> <contacto> [caracteristicas=...]` | ciudadano | Registra una mascota perdida o encontrada. `nombre` puede ser `-` si no se conoce; `caracteristicas` admite espacios. |
+| `list_pets [especie=...] [zona=...] [estado=...] [tipo=...]` | ciudadano | Lista reportes de mascotas, opcionalmente filtrados. |
+| `match_pets` | voluntario | Busca posibles coincidencias entre mascotas perdidas y encontradas. |
+| `confirm_pet_match <perdida> <encontrada>` | coordinador | Confirma la coincidencia entre los identificadores de dos reportes. |
+
+### Albergues y resumen
+
+| Comando | Rol mínimo | Qué hace |
+| --- | --- | --- |
+| `register_shelter <codigo> <nombre> <zona> <capacidad>` | coordinador | Registra un albergue con su capacidad. |
+| `check_shelter <codigo>` | ciudadano | Muestra ocupación, cupos, necesidades y recursos asociados al albergue. |
+| `register_entry <codigo> <documento>` | voluntario | Registra la entrada de una persona al albergue. |
+| `register_exit <codigo> <documento>` | voluntario | Registra la salida de una persona del albergue. |
+| `shelter_report [limite=...]` | voluntario | Muestra los albergues con mayor ocupación; el límite predeterminado es 5. |
+| `summary` | coordinador | Muestra un resumen global de zonas, necesidades, recursos, personas, mensajes, mascotas y albergues. |
+
+### Valores aceptados
+
+- **Nivel de zona:** `critico`, `alto`, `medio`, `bajo`.
+- **Tipo de necesidad:** `agua`, `alimentos`, `medicamentos`, `primeros_auxilios`, `refugio`, `transporte`, `rescate`, `otra`.
+- **Prioridad:** `critica`, `alta`, `media`, `baja`.
+- **Estado de necesidad:** `pendiente`, `asignada`, `en_atencion`, `atendida`, `cancelada`.
+- **Estado de persona:** `sin_informacion`, `reportada`, `localizada`, `trasladada`, `en_albergue`, `reunificada`.
+- **Estado de mensaje:** `pendiente`, `entregado`.
+- **Tipo de reporte de mascota:** `perdida`, `encontrada`.
+- **Estado de mascota:** `activa`, `posible_coincidencia`, `resuelta`.
+- **Tamaño de mascota:** `grande`, `mediano`, `pequeno`.
+
+Los valores se aceptan sin distinguir mayúsculas y minúsculas; se admiten las formas con acento cuando corresponda (por ejemplo, `crítica`). Si un comando requiere una categoría de recurso, esta debe corresponder al tipo de necesidad que se atenderá.
+
+## Ejemplos de sesión
 
 ```text
 mix emergencias
-  |
-  v
-Mix.Tasks.Emergencias
-  +-> app.start -> Emergencias.Application -> Emergencias.Supervisor
-  |
-  v
-Emergencias.CLI.REPL
-  +-> Emergencias -> Accounts.session
-  |                    |
-  |                    v
-  |              CLI.Commands
-  |               +-> CLI.Parser
-  |               +-> CLI.Spec
-  |               +-> Accounts
-  |               +-> Zones
-  |               +-> Needs
-  |               +-> Resources
-  |               +-> Family
-  |               +-> Pets
-  |               +-> Shelters
-  |               +-> Reports
-  |
-  +-> CLI.Formatter -> salida en consola
+emergencias> connect laura 1234 coordinador centro nombre="Laura Gómez"
+laura> register_zone centro "Centro" critico afectadas=25
+laura> register_sector centro s1 "Sector 1" alto
+laura> zone_status centro
+laura> summary
+laura> disconnect
+emergencias> quit
 ```
 
-Los módulos de cada contexto se organizan así:
+Los datos que la aplicación genere se guardan bajo `data/` en la carpeta desde la que se inicia Mix. No ejecutes `mix clean` esperando borrar estos datos: esa tarea solo limpia archivos de compilación.
 
-```text
-Accounts  -> Accounts.Server, Accounts.User
-Zones     -> Zones.Server -> Zones.Tree -> Zones.Node
-Needs     -> Needs.Server -> Needs.Need
-Resources -> Resources.Server -> Resources.Inventory -> Resources.Resource
-Family    -> Family.Server -> Family.Person, Family.Message
-Pets      -> Pets.Server -> Pets.Report -> Pets.Matcher
-Shelters  -> Shelters.Supervisor -> Shelters.Server -> Shelters.Shelter
+## Usar desde IEx
+
+También se puede cargar la aplicación en la consola estándar de Elixir:
+
+```shell
+iex -S mix
 ```
 
-Dependencias transversales entre módulos:
+Desde IEx se pueden llamar las funciones públicas de entrada de la aplicación:
 
-```text
-CLI.Commands -> los módulos de contexto
-CLI.Commands -> Reports -> Zones, Needs, Resources, Family, Pets, Shelters
-Needs.Server -> Resources.Server
-GenServers de contexto -> Emergencias.Server -> Emergencias.Storage -> data/*.txt
-Shelters.Server -------------------------------> Emergencias.Storage
+```elixir
+{:ok, _usuario, _estado} =
+  Emergencias.connect("laura", "1234", %{role: "coordinador", zone: "centro"})
+
+Emergencias.execute("laura", ~s(register_zone centro "Centro" critico))
+Emergencias.disconnect("laura")
 ```
 
-`Emergencias.Server` proporciona funciones comunes para los GenServer persistentes. `Shelters.Server` gestiona un proceso por albergue y usa `Storage` directamente. `Types`, `Validation`, `Text`, `Filter` y `Clock` son módulos compartidos por las reglas y contextos que los necesitan.
-
-### Flujo de una operación
-
-```text
-Usuario
-  |
-  v
-CLI.REPL -> Emergencias -> Accounts.session
-                |
-                v
-         CLI.Commands -> Parser / Spec
-                |
-                +-> Accounts
-                +-> Zones
-                +-> Needs
-                +-> Resources
-                +-> Family
-                +-> Pets
-                +-> Shelters
-                +-> Reports -> consulta y combina varios contextos
-                |
-                v
-       Servidores del dominio (GenServer)
-                |
-                +-> módulos de reglas puras (validación y transformación)
-                |
-                v
-       Storage -> archivos data/*.txt
-```
-
-Los comandos atraviesan la interfaz de consola, se interpretan y autorizan, y se ejecutan en el contexto correspondiente. Los contextos usan sus GenServer para gestionar estado; las reglas de dominio se mantienen en módulos puros. Los servidores persisten sus cambios mediante `Storage`.
-
-### Supervisión y procesos
-
-```text
-Emergencias.Supervisor (one_for_one)
-  |
-  +-> Accounts.Server
-  +-> Zones.Server
-  +-> Resources.Server
-  +-> Needs.Server
-  +-> Family.Server
-  +-> Pets.Server
-  +-> Shelters.Supervisor (rest_for_one)
-        |
-        +-> Registry
-        +-> DynamicSupervisor -> un proceso por albergue
-        +-> tarea de restauración de albergues desde disco
-```
-
-Cada servidor principal se reinicia de forma independiente. El supervisor de albergues reinicia sus procesos dependientes en orden y vuelve a restaurar los albergues cuando corresponde.
-
-### Dependencia entre necesidades e inventario
-
-```text
-Needs.Server -> valida y asigna una necesidad
-      |
-      v
-Resources.Server -> descuenta y persiste el inventario
-      |
-      v
-Needs.Server -> guarda la asignación y confirma el resultado
-```
-
-Las llamadas a cada GenServer se procesan secuencialmente. Si guardar la necesidad falla después de asignar recursos, el sistema los devuelve al inventario.
-
-### Reportes agregados
-
-```text
-CLI.Commands -> Reports
-                 |
-                 +-> Zones
-                 +-> Needs
-                 +-> Resources
-                 +-> Family
-                 +-> Pets
-                 +-> Shelters
-```
-
-`Reports` reúne datos de varios contextos para producir resúmenes globales y estados por zona o albergue; no reemplaza a los servidores que mantienen esos datos.
-
-## Structs
-
-- `Emergencias.Accounts.User`: username, full_name, role, zone, salt, password_hash. Datos de una cuenta de usuario.
-- `Emergencias.Accounts.Server.State`: users (por defecto: `%{}`), connected (por defecto: `[]`), activity (por defecto: `[]`). Estado de usuarios, conexiones y actividad.
-- `Emergencias.Family.Message`: id, from, to, content, status, at, delivered_at. Mensaje dirigido a una persona o familia.
-- `Emergencias.Family.Person`: id, document, name, age, zone, status, reported_by, created_at, history (por defecto: `[]`). Persona afectada y su historial de cambios.
-- `Emergencias.Family.Server.State`: persons (por defecto: `%{}`), messages (por defecto: `%{}`), next_person (por defecto: `1`), next_message (por defecto: `1`). Estado de personas, mensajes y secuencias.
-- `Emergencias.Needs.Need`: id, seq, type, description, quantity, zone, priority, reporter, shelter, person, created_at, status (por defecto: `:pendiente`), assignments (por defecto: `[]`), history (por defecto: `[]`). Necesidad reportada, asignaciones y cambios de estado.
-- `Emergencias.Needs.Server.State`: needs (por defecto: `%{}`), next_seq (por defecto: `1`). Estado de las necesidades registradas.
-- `Emergencias.Pets.Report`: id, seq, kind, species, name, color, size, traits, zone, contact, reporter, matched_with, created_at, status (por defecto: `:activa`). Reporte de una mascota perdida o encontrada.
-- `Emergencias.Pets.Server.State`: reports (por defecto: `%{}`), matches (por defecto: `[]`), next_seq (por defecto: `1`). Estado de reportes y coincidencias de mascotas.
-- `Emergencias.Resources.Inventory`: stocks (por defecto: `%{}`), movements (por defecto: `[]`), next_movement (por defecto: `1`). Existencias de recursos y su historial de movimientos.
-- `Emergencias.Resources.Resource`: code, name, category, unit, location, zone, quantity (por defecto: `0`). Recurso y cantidad disponible en una ubicación.
-- `Emergencias.Shelters.Shelter`: code, name, zone, capacity, occupants (por defecto: `MapSet.new()`). Albergue, capacidad y personas alojadas.
-- `Emergencias.Zones.Node`: code, name, kind, level, affected (por defecto: `0`), children (por defecto: `[]`). Nodo de la jerarquía de zonas y sectores.
+Para salir de IEx, usa `Ctrl+C` dos veces o `System.stop()`. Para consultar ayuda de Elixir desde IEx, usa `h()` o `h Nombre.del.modulo`.
